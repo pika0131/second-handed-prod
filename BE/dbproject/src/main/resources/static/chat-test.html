@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>채팅 테스트</title>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+    <style>
+        body { font-family: sans-serif; max-width: 750px; margin: 30px auto; padding: 0 20px; }
+        input, button, select { padding: 6px 10px; margin: 4px; }
+        button { cursor: pointer; background: #4CAF50; color: white; border: none; border-radius: 4px; }
+        button.danger { background: #e53935; }
+        button.blue { background: #1565C0; }
+        #messages { border: 1px solid #ccc; height: 250px; overflow-y: auto; padding: 10px; margin-top: 10px; background: #fafafa; }
+        #log { border: 1px solid #ddd; height: 130px; overflow-y: auto; padding: 8px; font-size: 12px; color: #555; background: #f5f5f5; }
+        .msg { margin: 4px 0; }
+        .msg.B { color: #1565C0; }
+        .msg.S { color: #C62828; text-align: right; }
+        h3 { margin-top: 24px; border-bottom: 1px solid #eee; padding-bottom: 4px; }
+        .error { color: red; font-weight: bold; }
+        select { min-width: 200px; }
+        table { border-collapse: collapse; font-size: 13px; margin-top: 6px; }
+        td, th { border: 1px solid #ddd; padding: 4px 8px; }
+        th { background: #f0f0f0; }
+    </style>
+</head>
+<body>
+    <h2>채팅 테스트 페이지</h2>
+
+    <h3>0. DB 데이터 불러오기</h3>
+    <button class="blue" onclick="loadItems()">아이템 목록 불러오기</button>
+    <div id="itemTable" style="margin-top:8px;"></div>
+
+    <h3>1. 채팅방 생성</h3>
+    내 CNO (구매자):
+    <input id="cno" placeholder="예: 실제 CNO 입력" />
+    <br/>
+    판매자 CNO (RECEIVECNO):
+    <input id="receiveCno" placeholder="예: 위 아이템의 CNO" />
+    ITEMNO:
+    <input id="itemNo" type="number" placeholder="예: 위 아이템의 ITEMNO" style="width:80px;"/>
+    <br/>
+    <button onclick="createRoom()">채팅방 생성 / 조회</button>
+    <div id="roomResult" style="margin-top:8px;"></div>
+
+    <h3>2. 내 채팅방 목록</h3>
+    CNO: <input id="myCno" placeholder="구매자 또는 판매자 CNO" />
+    <button onclick="listRooms()">목록 조회</button>
+    <div id="roomList" style="margin-top:8px;"></div>
+
+    <h3>3. WebSocket 연결 & 채팅</h3>
+    채팅방 번호(ROOMNO): <input id="roomNo" placeholder="채팅방 생성 후 자동입력" />
+    <button onclick="connect()">연결</button>
+    <button class="danger" onclick="disconnect()">연결 해제</button>
+    <div id="messages"></div>
+    <br/>
+    보내는 사람:
+    <select id="sender">
+        <option value="B">B (구매자)</option>
+        <option value="S">S (판매자)</option>
+    </select>
+    <input id="msgInput" placeholder="메시지 입력" style="width:280px;" />
+    <button onclick="sendMsg()">전송</button>
+
+    <h3>로그</h3>
+    <div id="log"></div>
+
+    <script>
+        let stompClient = null;
+        let currentRoomNo = null;
+
+        function log(msg, isError) {
+            const el = document.getElementById('log');
+            const div = document.createElement('div');
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            if (isError) div.className = 'error';
+            el.appendChild(div);
+            el.scrollTop = el.scrollHeight;
+        }
+
+        async function loadItems() {
+            try {
+                const res = await fetch('http://localhost:8080/api/items');
+                if (!res.ok) { log('아이템 조회 실패: ' + res.status, true); return; }
+                const items = await res.json();
+                if (items.length === 0) {
+                    document.getElementById('itemTable').innerHTML = '<div>등록된 아이템이 없습니다.</div>';
+                    return;
+                }
+                let html = '<table><tr><th>판매자CNO</th><th>ITEMNO</th><th>제목</th><th>가격</th><th>상태</th><th>선택</th></tr>';
+                items.forEach(item => {
+                    html += `<tr>
+                        <td>${item.cno}</td>
+                        <td>${item.itemNo}</td>
+                        <td>${item.title}</td>
+                        <td>${item.price}</td>
+                        <td>${item.sellStatus}</td>
+                        <td><button onclick="selectItem('${item.cno}',${item.itemNo})">선택</button></td>
+                    </tr>`;
+                });
+                html += '</table>';
+                document.getElementById('itemTable').innerHTML = html;
+                log(`아이템 ${items.length}개 로드`);
+            } catch (e) {
+                log('아이템 로드 실패: ' + e, true);
+            }
+        }
+
+        function selectItem(cno, itemNo) {
+            document.getElementById('receiveCno').value = cno;
+            document.getElementById('itemNo').value = itemNo;
+            log(`선택: 판매자=${cno}, itemNo=${itemNo}`);
+        }
+
+        async function createRoom() {
+            const cno = document.getElementById('cno').value.trim();
+            const receiveCno = document.getElementById('receiveCno').value.trim();
+            const itemNo = document.getElementById('itemNo').value.trim();
+
+            if (!cno || !receiveCno || !itemNo) {
+                alert('구매자 CNO, 판매자 CNO, ITEMNO를 모두 입력하세요.');
+                return;
+            }
+            if (cno === receiveCno) {
+                alert('구매자와 판매자가 같을 수 없습니다.');
+                return;
+            }
+
+            try {
+                const res = await fetch('http://localhost:8080/api/chat/rooms', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cno, receiveCno, itemNo: parseInt(itemNo) })
+                });
+                if (!res.ok) {
+                    const errText = await res.text();
+                    log('채팅방 생성 실패 (' + res.status + '): ' + errText, true);
+                    document.getElementById('roomResult').innerHTML = `<span class="error">오류: ${res.status} - ${errText}</span>`;
+                    return;
+                }
+                const room = await res.json();
+                document.getElementById('roomResult').innerHTML =
+                    `채팅방 번호: <b>${room.roomNo}</b> | 구매자: ${room.cno} | 판매자: ${room.receiveCno}`;
+                document.getElementById('roomNo').value = room.roomNo;
+                document.getElementById('myCno').value = cno;
+                currentRoomNo = room.roomNo;
+                log(`채팅방 생성/조회 성공 - roomNo: ${room.roomNo}`);
+            } catch (e) {
+                log('채팅방 생성 실패: ' + e, true);
+            }
+        }
+
+        async function listRooms() {
+            const cno = document.getElementById('myCno').value.trim();
+            if (!cno) { alert('CNO를 입력하세요'); return; }
+            try {
+                const res = await fetch(`http://localhost:8080/api/chat/rooms/user/${cno}`);
+                if (!res.ok) { log('목록 조회 실패: ' + res.status, true); return; }
+                const rooms = await res.json();
+                const html = rooms.map(r =>
+                    `<div>roomNo: <b>${r.roomNo}</b> | 구매자: ${r.cno} | 판매자: ${r.receiveCno} | itemNo: ${r.itemNo}
+                     <button onclick="selectRoom(${r.roomNo})">선택</button></div>`
+                ).join('') || '<div>채팅방 없음</div>';
+                document.getElementById('roomList').innerHTML = html;
+                log(`채팅방 ${rooms.length}개 조회`);
+            } catch (e) {
+                log('목록 조회 실패: ' + e, true);
+            }
+        }
+
+        function selectRoom(roomNo) {
+            document.getElementById('roomNo').value = roomNo;
+            currentRoomNo = roomNo;
+            log(`roomNo ${roomNo} 선택`);
+        }
+
+        function connect() {
+            const roomNo = document.getElementById('roomNo').value;
+            if (!roomNo) { alert('채팅방 번호를 입력하세요'); return; }
+            currentRoomNo = roomNo;
+
+            const socket = new SockJS('http://localhost:8080/ws');
+            stompClient = Stomp.over(socket);
+            stompClient.debug = null;
+
+            stompClient.connect({}, () => {
+                log(`WebSocket 연결 성공 - roomNo: ${roomNo}`);
+                stompClient.subscribe(`/topic/chat/${roomNo}`, (frame) => {
+                    const msg = JSON.parse(frame.body);
+                    appendMessage(msg);
+                });
+                loadHistory(roomNo);
+            }, (err) => {
+                log('WebSocket 연결 실패: ' + err, true);
+            });
+        }
+
+        async function loadHistory(roomNo) {
+            const res = await fetch(`http://localhost:8080/api/chat/rooms/${roomNo}/messages`);
+            if (!res.ok) { log('메시지 내역 로드 실패', true); return; }
+            const msgs = await res.json();
+            document.getElementById('messages').innerHTML = '';
+            msgs.forEach(appendMessage);
+            log(`이전 메시지 ${msgs.length}개 로드`);
+        }
+
+        function appendMessage(msg) {
+            const el = document.getElementById('messages');
+            const div = document.createElement('div');
+            div.className = `msg ${msg.sender}`;
+            const label = msg.sender === 'B' ? '구매자' : '판매자';
+            const time = msg.sentDatetime ? new Date(msg.sentDatetime).toLocaleTimeString() : '';
+            div.textContent = `[${label}] ${msg.content}  ${time}`;
+            el.appendChild(div);
+            el.scrollTop = el.scrollHeight;
+        }
+
+        function sendMsg() {
+            if (!stompClient || !stompClient.connected) { alert('먼저 연결하세요'); return; }
+            const content = document.getElementById('msgInput').value.trim();
+            if (!content) return;
+            stompClient.send(`/app/chat/${currentRoomNo}`, {}, JSON.stringify({
+                sender: document.getElementById('sender').value,
+                content
+            }));
+            document.getElementById('msgInput').value = '';
+        }
+
+        function disconnect() {
+            if (stompClient) { stompClient.disconnect(); log('연결 해제'); }
+        }
+
+        document.getElementById('msgInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') sendMsg();
+        });
+    </script>
+</body>
+</html>

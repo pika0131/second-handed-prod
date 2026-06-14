@@ -1,0 +1,65 @@
+@import 'tailwindcss';
+
+/* ─────────────────────────────────────────────
+   동네장터 디자인 토큰
+   동네 중고거래 = 따뜻하고 신뢰감 있는 정체성
+   primary: 따뜻한 감귤빛 오렌지
+   역할 색: 구매자(파랑) · 판매자(초록) · 관리자(보라)
+   ───────────────────────────────────────────── */
+@theme {
+  --font-sans: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont,
+    system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+
+  --color-brand-50: #fff5ed;
+  --color-brand-100: #ffe8d4;
+  --color-brand-200: #ffcda8;
+  --color-brand-300: #ffaa70;
+  --color-brand-400: #ff7d37;
+  --color-brand-500: #fa5d2b;
+  --color-brand-600: #ea4314;
+  --color-brand-700: #c23010;
+  --color-brand-800: #9a2914;
+  --color-brand-900: #7c2614;
+
+  /* 따뜻한 기운이 도는 중립색 (차갑지 않게) */
+  --color-paper: #fbfaf8;
+  --color-ink: #1c1917;
+  --color-muted: #78716c;
+
+  --radius-card: 1rem;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* 가격/숫자는 등폭으로 정렬감 있게 */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+/* 스크롤바 살짝 정돈 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #d6d3d1;
+  border-radius: 9999px;
+  border: 2px solid var(--color-paper);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a29e;
+}

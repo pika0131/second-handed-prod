@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find \"C:\\\\Users\\\\wjdwn\\\\OneDrive\\\\바탕 화면\\\\dbproject\\\\src\" -type f -name \"*.java\" | head -30)",
+      "Read(//c/Users/wjdwn/OneDrive/바탕 화면/dbproject/src/**)"
+    ]
+  }
+}

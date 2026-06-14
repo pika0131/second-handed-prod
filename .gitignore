@@ -1,0 +1,22 @@
+# ── OS / 에디터 ──────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# ── Spring Boot (Maven) ──────────────────────────────
+BE/dbproject/target/
+BE/dbproject/uploads/
+
+# ── React / Vite ─────────────────────────────────────
+FE/frontend/node_modules/
+FE/frontend/dist/
+FE/frontend/.env
+FE/frontend/.env.local
+FE/frontend/.env.*.local
+
+# ── 환경설정 / 시크릿 ─────────────────────────────────
+*.env
+application-local.properties
+application-prod.properties

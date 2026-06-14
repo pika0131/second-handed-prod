@@ -1,0 +1,20 @@
+### Maven ###
+target/
+*.class
+
+### 업로드 이미지 (로컬 전용) ###
+uploads/
+
+### IntelliJ IDEA ###
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+
+### VS Code ###
+.vscode/
+
+### OS ###
+.DS_Store
+Thumbs.db
