@@ -40,17 +40,24 @@ public class ChatController {
                 return ResponseEntity.badRequest().body("cno, receiveCno 필드가 필요합니다.");
             }
 
-            return chatRoomRepository
-                    .findByCnoAndReceiveCnoAndItemNo(sellerCno, buyerCno, itemNo)
-                    .map(ResponseEntity::ok)
-                    .orElseGet(() -> {
-                        ChatRoom room = new ChatRoom();
-                        room.setCno(sellerCno);       // FK_CHAT_ITEM: 판매자 cno
-                        room.setReceiveCno(buyerCno); // 구매자 cno
-                        room.setItemNo(itemNo);
-                        room.setCreateDatetime(LocalDateTime.now());
-                        return ResponseEntity.ok(chatRoomRepository.save(room));
-                    });
+            // 1. 두 사용자 사이에 이미 채팅방이 있으면 재활용 (역할 방향 무관)
+            List<ChatRoom> existing = chatRoomRepository.findByPair(sellerCno, buyerCno);
+            if (!existing.isEmpty()) {
+                ChatRoom room = existing.get(0);
+                // FK(CNO, ITEMNO) 위반 방지: 현재 거래 기준으로 판매자·구매자·상품 모두 갱신
+                room.setCno(sellerCno);
+                room.setReceiveCno(buyerCno);
+                room.setItemNo(itemNo);
+                return ResponseEntity.ok(chatRoomRepository.save(room));
+            }
+
+            // 2. 처음이면 새로 생성
+            ChatRoom room = new ChatRoom();
+            room.setCno(sellerCno);
+            room.setReceiveCno(buyerCno);
+            room.setItemNo(itemNo);
+            room.setCreateDatetime(LocalDateTime.now());
+            return ResponseEntity.ok(chatRoomRepository.save(room));
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body("채팅방 생성 실패: " + e.getMessage());
         }

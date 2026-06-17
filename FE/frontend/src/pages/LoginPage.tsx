@@ -45,7 +45,7 @@ export function LoginPage() {
       </div>
 
       <form onSubmit={submit} className="space-y-4 rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
-        <Field label="회원번호 (CNO)">
+        <Field label="아이디">
           <input
             value={cno}
             onChange={(e) => setCno(e.target.value)}

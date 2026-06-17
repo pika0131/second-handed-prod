@@ -56,20 +56,31 @@ export function HomePage() {
 
   useEffect(load, []);
 
-  // 다른 사용자가 상품 등록 시 실시간 반영
+  // 상품 등록·수정·상태변경·삭제 실시간 반영
   useEffect(() => {
     const client = new Client({
       webSocketFactory: () => new SockJS(`${window.location.origin}/ws`),
       reconnectDelay: 5000,
       onConnect: () => {
+        // 등록 / 수정 / 상태 변경
         client.subscribe('/topic/items', (frame) => {
-          const newItem: Item = JSON.parse(frame.body);
+          const updated: Item = JSON.parse(frame.body);
           setItems((prev) => {
             const exists = prev.some(
-              (i) => i.cno === newItem.cno && i.itemNo === newItem.itemNo,
+              (i) => i.cno === updated.cno && i.itemNo === updated.itemNo,
             );
-            return exists ? prev : [newItem, ...prev];
+            if (exists) {
+              return prev.map((i) =>
+                i.cno === updated.cno && i.itemNo === updated.itemNo ? updated : i,
+              );
+            }
+            return [updated, ...prev];
           });
+        });
+        // 삭제
+        client.subscribe('/topic/items/delete', (frame) => {
+          const { cno, itemNo } = JSON.parse(frame.body) as { cno: string; itemNo: number };
+          setItems((prev) => prev.filter((i) => !(i.cno === cno && i.itemNo === itemNo)));
         });
       },
     });

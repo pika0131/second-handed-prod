@@ -103,6 +103,15 @@ export interface SellerRankStat {
   revenueShare: number; // 전체 대비 매출 비중 (%)
 }
 
+export interface AdminMsg {
+  msgId: number;
+  sellerCno: string;
+  itemTitle: string;
+  reason: string;
+  sentAt: string;
+  isRead: 'Y' | 'N';
+}
+
 export interface PurchasedItem {
   cno: string;
   itemNo: number;
@@ -114,4 +123,14 @@ export interface PurchasedItem {
   resDateTime: string | null;
   reqDateTime: string;
   reqPrice: number;
+}
+
+export interface ReceivedPurchaseReq {
+  requestCno: string;
+  cno: string;
+  itemNo: number;
+  itemTitle: string;
+  reqPrice: number;
+  reqMessage: string | null;
+  reqDateTime: string;
 }

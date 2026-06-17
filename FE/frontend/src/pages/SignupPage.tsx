@@ -24,7 +24,7 @@ export function SignupPage() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.cno || !form.passwd || !form.nickname) {
-      setError('회원번호, 비밀번호, 닉네임은 필수입니다.');
+      setError('아이디, 비밀번호, 닉네임은 필수입니다.');
       return;
     }
     setBusy(true);
@@ -41,8 +41,7 @@ export function SignupPage() {
       navigate('/');
     } catch (err) {
       setError(
-        (err instanceof Error ? err.message : '회원가입에 실패했습니다.') +
-          ' (백엔드에 POST /api/customers 가 추가되어 있어야 합니다.)',
+        (err instanceof Error ? err.message : '회원가입에 실패했습니다.')
       );
     } finally {
       setBusy(false);

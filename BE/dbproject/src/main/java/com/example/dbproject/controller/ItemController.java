@@ -83,7 +83,9 @@ public class ItemController {
         item.setTradePlace(req.getTradePlace());
         if (req.getSellStatus() != null)
             item.setSellStatus(req.getSellStatus());
-        return ResponseEntity.ok(itemRepository.save(item));
+        Item saved = itemRepository.save(item);
+        messagingTemplate.convertAndSend("/topic/items", saved);
+        return ResponseEntity.ok(saved);
     }
 
     // 6. 판매 상태 변경
@@ -101,7 +103,9 @@ public class ItemController {
         if ("거래 완료".equals(status)) {
             item.setResDateTime(LocalDateTime.now());
         }
-        return ResponseEntity.ok(itemRepository.save(item));
+        Item saved = itemRepository.save(item);
+        messagingTemplate.convertAndSend("/topic/items", saved);
+        return ResponseEntity.ok(saved);
     }
 
     // 7. 상품 삭제
@@ -117,6 +121,7 @@ public class ItemController {
         chatRoomRepository.deleteByCnoAndItemNo(cno, itemNo);
         purchaseReqRepository.deleteByCnoAndItemNo(cno, itemNo);
         itemRepository.deleteById(id);
+        messagingTemplate.convertAndSend("/topic/items/delete", (Object) Map.of("cno", cno, "itemNo", itemNo));
         return ResponseEntity.noContent().build();
     }
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Search, Trash2, Package } from 'lucide-react';
-import { itemApi } from '@/api/client';
+import { Search, Trash2, Package, X } from 'lucide-react';
+import { itemApi, adminApi } from '@/api/client';
 import type { Item } from '@/api/types';
 import { CATEGORIES } from '@/api/types';
 import { Price, StatusBadge, Button, EmptyState } from '@/components/ui';
@@ -11,6 +11,11 @@ export function AdminItemsPage() {
   const [error, setError] = useState<string | null>(null);
   const [keyword, setKeyword] = useState('');
   const [category, setCategory] = useState('전체');
+
+  // 삭제 모달
+  const [deleteTarget, setDeleteTarget] = useState<Item | null>(null);
+  const [reason, setReason] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -30,14 +35,29 @@ export function AdminItemsPage() {
     [items, category, keyword],
   );
 
-  const remove = async (item: Item) => {
-    if (!confirm(`'${item.title}' 상품을 삭제할까요? 복구할 수 없습니다.`)) return;
-    setItems((prev) => prev.filter((i) => !(i.cno === item.cno && i.itemNo === item.itemNo)));
+  const openDeleteModal = (item: Item) => {
+    setDeleteTarget(item);
+    setReason('');
+  };
+
+  const closeDeleteModal = () => {
+    setDeleteTarget(null);
+    setReason('');
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget || !reason.trim()) return;
+    setDeleting(true);
     try {
-      await itemApi.remove(item.cno, item.itemNo);
+      await adminApi.deleteItem(deleteTarget.cno, deleteTarget.itemNo, reason.trim());
+      setItems((prev) =>
+        prev.filter((i) => !(i.cno === deleteTarget.cno && i.itemNo === deleteTarget.itemNo)),
+      );
+      closeDeleteModal();
     } catch (e) {
       alert('삭제 실패: ' + (e instanceof Error ? e.message : ''));
-      load();
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -101,7 +121,7 @@ export function AdminItemsPage() {
                     <StatusBadge status={i.sellStatus} />
                   </td>
                   <td className="px-4 py-3">
-                    <Button variant="danger" className="px-2.5 py-1.5" onClick={() => remove(i)}>
+                    <Button variant="danger" className="px-2.5 py-1.5" onClick={() => openDeleteModal(i)}>
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </td>
@@ -109,6 +129,64 @@ export function AdminItemsPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* 삭제 이유 모달 */}
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) closeDeleteModal(); }}
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-stone-900">상품 삭제</h2>
+              <button
+                onClick={closeDeleteModal}
+                className="grid h-8 w-8 place-items-center rounded-lg text-stone-400 hover:bg-stone-100"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-3 rounded-xl bg-red-50 px-4 py-3">
+              <p className="font-semibold text-stone-800">{deleteTarget.title}</p>
+              <p className="mt-0.5 text-xs text-stone-500">판매자: {deleteTarget.cno}</p>
+            </div>
+
+            <label className="mt-4 block">
+              <span className="text-sm font-semibold text-stone-700">
+                삭제 이유 <span className="text-red-500">*</span>
+              </span>
+              <p className="mt-0.5 text-xs text-stone-400">
+                이 내용은 판매자에게 알림으로 전달됩니다.
+              </p>
+              <textarea
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="예) 불법 상품, 중복 게시, 허위 정보 등 삭제 이유를 입력하세요"
+                rows={4}
+                maxLength={500}
+                autoFocus
+                className="mt-1 w-full resize-none rounded-xl border border-stone-300 px-4 py-2.5 text-sm outline-none placeholder:text-stone-400 focus:border-red-400"
+              />
+              <p className="mt-0.5 text-right text-xs text-stone-400">{reason.length}/500</p>
+            </label>
+
+            <div className="mt-4 flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={closeDeleteModal} disabled={deleting}>
+                취소
+              </Button>
+              <Button
+                variant="danger"
+                className="flex-1"
+                onClick={confirmDelete}
+                disabled={deleting || !reason.trim()}
+              >
+                {deleting ? '처리 중…' : '삭제 및 알림 전송'}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>

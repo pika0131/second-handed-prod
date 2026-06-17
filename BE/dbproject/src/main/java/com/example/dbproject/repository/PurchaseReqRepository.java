@@ -13,6 +13,9 @@ public interface PurchaseReqRepository extends JpaRepository<PurchaseReq, Purcha
     // 특정 상품에 들어온 구매 요청 목록 (판매자용)
     List<PurchaseReq> findByCnoAndItemNo(String cno, Long itemNo);
 
+    // 내 상품 전체에 들어온 구매 요청 목록 (판매자용)
+    List<PurchaseReq> findByCno(String cno);
+
     // 내가 보낸 구매 요청 목록 (구매자용)
     List<PurchaseReq> findByRequestCno(String requestCno);
 

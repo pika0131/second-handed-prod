@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, MapPin, Clock, Tag, MessageCircle, Heart, ImageOff, Pencil, X } from 'lucide-react';
-import { itemApi, chatApi, purchaseApi, customerApi, ApiError } from '@/api/client';
+import { itemApi, purchaseApi, customerApi, ApiError } from '@/api/client';
 import type { Item, Customer } from '@/api/types';
 import { Button, Price, StatusBadge, EmptyState } from '@/components/ui';
 import { useAuth } from '@/auth/AuthContext';
@@ -79,7 +79,6 @@ export function ItemDetailPage() {
     }
     setSubmitting(true);
     try {
-      // 1. PURCHASEREQ 테이블에 거래 요청 저장
       await purchaseApi
         .create({
           requestCno: user.cno,
@@ -89,21 +88,13 @@ export function ItemDetailPage() {
           reqMessage: reqMessage.trim(),
         })
         .catch((e: unknown) => {
-          // 이미 요청한 경우(409)는 무시하고 채팅방만 열기
-          if (e instanceof ApiError && e.status === 409) return null;
+          if (e instanceof ApiError && e.status === 409) return null; // 이미 요청함
           throw e;
         });
 
-      // 2. 채팅방 생성 또는 가져오기
-      const room = await chatApi.getOrCreateRoom(user.cno, item.cno, item.itemNo);
-
-      // 3. 채팅방으로 이동 — 거래 요청 메시지를 state로 전달해 자동 전송
-      const chatMsg =
-        `[거래 요청]\n희망 가격: ${price.toLocaleString()}원` +
-        (reqMessage.trim() ? `\n메시지: ${reqMessage.trim()}` : '');
-
       setShowModal(false);
-      navigate(`/chat/${room.roomNo}`, { state: { purchaseMessage: chatMsg } });
+      // 채팅 목록으로 이동하면 "승인 대기 중" 섹션에서 요청을 확인할 수 있음
+      navigate('/chat');
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '요청에 실패했습니다.';
       alert(msg);
@@ -132,6 +123,8 @@ export function ItemDetailPage() {
 
   const isOwner = user?.cno === item.cno;
   const sold = item.sellStatus !== '판매 중';
+  const soldLabel =
+    item.sellStatus === '예약 중' ? '예약 중인 상품입니다' : '거래가 끝난 상품입니다';
   const allPics = [item.pic1Url, item.pic2Url, item.pic3Url].filter(Boolean) as string[];
 
   return (
@@ -229,7 +222,7 @@ export function ItemDetailPage() {
                     onClick={openModal}
                   >
                     <MessageCircle className="h-4 w-4" />
-                    {sold ? '거래가 끝난 상품입니다' : '채팅으로 거래하기'}
+                    {sold ? soldLabel : '구매 요청하기'}
                   </Button>
                 </div>
               </>
@@ -248,7 +241,7 @@ export function ItemDetailPage() {
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
             {/* 모달 헤더 */}
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold text-stone-900">거래 요청하기</h2>
+              <h2 className="text-lg font-bold text-stone-900">구매 요청하기</h2>
               <button
                 onClick={() => setShowModal(false)}
                 className="grid h-8 w-8 place-items-center rounded-lg text-stone-400 hover:bg-stone-100"

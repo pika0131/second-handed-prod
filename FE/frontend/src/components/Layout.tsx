@@ -1,8 +1,16 @@
+import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { Store, PlusCircle, Package, Receipt, Shield, LogOut, LogIn, MessageCircle } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
+import { chatApi, purchaseApi } from '@/api/client';
 
-function NavItem({ to, icon, label }: { to: string; icon: React.ReactNode; label: string }) {
+function NavItem({
+  to, icon, label, badge, yellowBadge,
+}: {
+  to: string; icon: React.ReactNode; label: string; badge?: number; yellowBadge?: number;
+}) {
+  const hasRed = (badge ?? 0) > 0;
+  const hasYellow = (yellowBadge ?? 0) > 0;
   return (
     <NavLink
       to={to}
@@ -13,7 +21,32 @@ function NavItem({ to, icon, label }: { to: string; icon: React.ReactNode; label
         }`
       }
     >
-      {icon}
+      <span className="relative">
+        {icon}
+        {/* 두 배지 모두 있을 때 — 나란히 표시 */}
+        {hasRed && hasYellow && (
+          <span className="absolute -right-5 -top-2 flex items-center gap-0.5">
+            <span className="grid h-3.5 min-w-3.5 place-items-center rounded-full bg-red-500 px-0.5 text-[9px] font-bold text-white">
+              {badge! > 99 ? '99+' : badge}
+            </span>
+            <span className="grid h-3.5 min-w-3.5 place-items-center rounded-full bg-yellow-400 px-0.5 text-[9px] font-bold text-white">
+              {yellowBadge! > 99 ? '99+' : yellowBadge}
+            </span>
+          </span>
+        )}
+        {/* 메시지만 있을 때 */}
+        {hasRed && !hasYellow && (
+          <span className="absolute -right-1.5 -top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
+            {badge! > 99 ? '99+' : badge}
+          </span>
+        )}
+        {/* 구매 요청만 있을 때 */}
+        {hasYellow && !hasRed && (
+          <span className="absolute -right-1.5 -top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-yellow-400 px-1 text-[10px] font-bold leading-none text-white">
+            {yellowBadge! > 99 ? '99+' : yellowBadge}
+          </span>
+        )}
+      </span>
       <span className="hidden sm:inline">{label}</span>
     </NavLink>
   );
@@ -22,6 +55,24 @@ function NavItem({ to, icon, label }: { to: string; icon: React.ReactNode; label
 export function Layout() {
   const { user, isAdmin, logout } = useAuth();
   const navigate = useNavigate();
+  const [totalUnread, setTotalUnread] = useState(0);
+  const [pendingReqCount, setPendingReqCount] = useState(0);
+
+  useEffect(() => {
+    if (!user) { setTotalUnread(0); setPendingReqCount(0); return; }
+    const poll = () => {
+      chatApi.getUnreadCounts(user.cno).then((u) => {
+        setTotalUnread(u.reduce((sum, x) => sum + x.unreadCount, 0));
+      }).catch(() => {});
+      purchaseApi.getReceived(user.cno).then((reqs) => {
+        setPendingReqCount(reqs.length);
+      }).catch(() => {});
+    };
+    poll();
+    const id = setInterval(poll, 5000);
+    window.addEventListener('focus', poll);
+    return () => { clearInterval(id); window.removeEventListener('focus', poll); };
+  }, [user]);
 
   return (
     <div className="flex min-h-full flex-col">
@@ -43,7 +94,7 @@ export function Layout() {
                 <NavItem to="/sell" icon={<PlusCircle className="h-4 w-4" />} label="판매하기" />
                 <NavItem to="/my-items" icon={<Package className="h-4 w-4" />} label="내 상품" />
                 <NavItem to="/trade" icon={<Receipt className="h-4 w-4" />} label="거래기록" />
-                <NavItem to="/chat" icon={<MessageCircle className="h-4 w-4" />} label="채팅" />
+                <NavItem to="/chat" icon={<MessageCircle className="h-4 w-4" />} label="채팅" badge={totalUnread} yellowBadge={pendingReqCount} />
               </>
             )}
             {isAdmin && (

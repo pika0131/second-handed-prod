@@ -1,4 +1,4 @@
-import type { Customer, Item, ItemForm, ChatRoom, ChatMessage, UnreadCount, PurchaseReq, CompletedSale, PurchasedItem, CategoryGroupStat, SellerRankStat } from './types';
+import type { Customer, Item, ItemForm, ChatRoom, ChatMessage, UnreadCount, PurchaseReq, CompletedSale, PurchasedItem, CategoryGroupStat, SellerRankStat, AdminMsg, ReceivedPurchaseReq } from './types';
 
 // Vite 프록시(vite.config.ts)가 /api → http://localhost:8080 으로 전달.
 // 배포 환경에서 절대 URL이 필요하면 VITE_API_BASE 환경변수로 덮어쓸 수 있음.
@@ -123,6 +123,11 @@ export const purchaseApi = {
   approve: (requestCno: string, cno: string, itemNo: number) =>
     request<Item>(`/api/purchase/${requestCno}/${cno}/${itemNo}/approve`, { method: 'PATCH' }),
 
+  // 판매자가 명시적으로 거절 (채팅 메시지 전송 포함)
+  rejectBySeller: (requestCno: string, cno: string, itemNo: number) =>
+    request<void>(`/api/purchase/${requestCno}/${cno}/${itemNo}/reject`, { method: 'PATCH' }),
+
+  // 구매자가 자신의 요청을 취소 (메시지 없이 단순 삭제)
   reject: (requestCno: string, cno: string, itemNo: number) =>
     request<void>(`/api/purchase/${requestCno}/${cno}/${itemNo}`, { method: 'DELETE' }),
 
@@ -134,6 +139,12 @@ export const purchaseApi = {
 
   getHistory: (requestCno: string) =>
     request<PurchasedItem[]>(`/api/purchase/history/${requestCno}`),
+
+  getReceived: (cno: string) =>
+    request<ReceivedPurchaseReq[]>(`/api/purchase/received/${cno}`),
+
+  getPending: (requestCno: string) =>
+    request<ReceivedPurchaseReq[]>(`/api/purchase/pending/${requestCno}`),
 };
 
 /* ── 판매 내역 (CompletedSales) ──────────────── */
@@ -146,6 +157,24 @@ export const salesApi = {
 export const statsApi = {
   getCategoryGroup: () => request<CategoryGroupStat[]>('/api/stats/category-group'),
   getSellerRank: () => request<SellerRankStat[]>('/api/stats/seller-rank'),
+};
+
+/* ── 관리자 (Admin) ──────────────────────────── */
+export const adminApi = {
+  deleteItem: (cno: string, itemNo: number, reason: string) =>
+    request<void>(`/api/admin/items/${cno}/${itemNo}/delete`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+
+  getMessages: (sellerCno: string) =>
+    request<AdminMsg[]>(`/api/admin/messages/${sellerCno}`),
+
+  getUnreadCount: (sellerCno: string) =>
+    request<{ count: number }>(`/api/admin/messages/${sellerCno}/unread-count`),
+
+  markRead: (msgId: number) =>
+    request<void>(`/api/admin/messages/${msgId}/read`, { method: 'PATCH' }),
 };
 
 /* ── 채팅 (Chat) ─────────────────────────────── */
