@@ -149,11 +149,37 @@ export function ChatListPage() {
         });
 
         // 판매자가 내 요청을 거절/승인하면 pendingReqs에서 제거
+        // 승인인 경우(approved: true) 채팅방을 rooms에 추가
         client.subscribe(`/topic/purchase/pending/${user.cno}/deleted`, (frame) => {
-          const data: { cno: string; itemNo: number } = JSON.parse(frame.body);
+          const data: { cno: string; itemNo: number; approved?: boolean } = JSON.parse(frame.body);
           setPendingReqs((prev) =>
             prev.filter((r) => !(r.cno === data.cno && r.itemNo === data.itemNo)),
           );
+          if (data.approved) {
+            chatApi.getOrCreateRoom(user.cno, data.cno, data.itemNo)
+              .then((room) => {
+                setRooms((prev) =>
+                  prev.some((r) => r.roomNo === room.roomNo) ? prev : [room, ...prev],
+                );
+                customerApi.get(data.cno)
+                  .then((c) => setNicknameMap((prev) => ({ ...prev, [data.cno]: c.nickname })))
+                  .catch(() => {});
+                itemApi.get(data.cno, data.itemNo)
+                  .then((i) => setItemTitleMap((prev) => ({ ...prev, [`${data.cno}-${data.itemNo}`]: i.title })))
+                  .catch(() => {});
+              })
+              .catch(() => {
+                // 채팅방 조회 실패 시 전체 목록 다시 불러오기 (fallback)
+                chatApi.getRoomsForUser(user.cno)
+                  .then((r) => {
+                    const sorted = [...r].sort(
+                      (a, b) => new Date(b.createDatetime).getTime() - new Date(a.createDatetime).getTime(),
+                    );
+                    setRooms(sorted);
+                  })
+                  .catch(() => {});
+              });
+          }
         });
       },
     });

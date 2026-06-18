@@ -346,11 +346,24 @@ export function ChatRoomPage() {
 
   /**
    * 판매자가 재협상을 거부하고 거래를 취소한다.
-   * CANCEL_MSG를 채팅에 전송하여 양쪽 모두 채팅 잠금 상태로 전환한다.
+   * 상품 상태를 '판매 중'으로 되돌린 후 CANCEL_MSG를 채팅에 전송한다.
    * WebSocket 콜백에서 CANCEL_MSG를 수신하면 tradeCancelled가 true로 설정된다.
    */
-  const handleCancelTrade = () => {
+  const handleCancelTrade = async () => {
+    if (!room) return;
     setShowRenegotiatePrompt(false);
+    // 구매 요청 먼저 삭제 — 상품이 판매 중으로 돌아와도 요청이 다시 뜨지 않도록
+    try {
+      await purchaseApi.reject(room.receiveCno, room.cno, room.itemNo);
+    } catch {
+      // 이미 없는 경우 무시
+    }
+    try {
+      await itemApi.updateStatus(room.cno, room.itemNo, '판매 중');
+      setItem((prev) => prev ? { ...prev, sellStatus: '판매 중' } : prev);
+    } catch {
+      // 상태 변경 실패해도 채팅 취소 메시지는 전송
+    }
     publish(CANCEL_MSG);
     setTradeCancelled(true);
   };

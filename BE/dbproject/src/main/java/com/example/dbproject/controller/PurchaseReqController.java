@@ -232,10 +232,11 @@ public class PurchaseReqController {
         messagingTemplate.convertAndSend("/topic/purchase/" + cno + "/deleted",
                 (Object) Map.of("itemNo", itemNo));
 
-        // 수락된 구매자 pendingReqs 실시간 제거
+        // 수락된 구매자 pendingReqs 실시간 제거 + 채팅방 추가 트리거 (approved: true)
         Map<String, Object> approvedBuyerPayload = new java.util.HashMap<>();
         approvedBuyerPayload.put("cno", cno);
         approvedBuyerPayload.put("itemNo", itemNo);
+        approvedBuyerPayload.put("approved", true);
         messagingTemplate.convertAndSend(
                 "/topic/purchase/pending/" + requestCno + "/deleted",
                 (Object) approvedBuyerPayload);
