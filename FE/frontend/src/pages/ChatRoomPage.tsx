@@ -1,3 +1,30 @@
+/**
+ * 채팅방 페이지
+ *
+ * URL: /chat/:roomNo
+ * 로그인 필요.
+ *
+ * 역할 결정:
+ *   room.receiveCno === user.cno → 구매자(B)
+ *   그 외               → 판매자(S)
+ *
+ * 메시지 종류 및 처리:
+ *   - 일반 텍스트: 말풍선 렌더링
+ *   - APPROVE_MSG ("판매자가 요청을 수락했어요."): 수락 알림 카드
+ *   - REJECT_NOTICE JSON {"type":"REJECT_NOTICE",...}: 거절 알림 카드
+ *   - FINAL_PRICE JSON {"type":"FINAL_PRICE","price":...}: 최종 가격 제안 카드
+ *     - 구매자: 수락(purchaseApi.complete) / 거절(REJECT_MSG 전송) 버튼 표시
+ *   - REJECT_MSG ("❌ ...거절..."):  가격 제안 카드에 거절 표시
+ *   - CANCEL_MSG ("🚫 거래 취소"): 채팅 전체 잠금
+ *
+ * 채팅 잠금 조건:
+ *   tradeCompleted (거래 완료) 또는 tradeCancelled (거래 취소) 시 입력 불가
+ *
+ * WebSocket: STOMP over SockJS
+ *   구독: /topic/chat/{roomNo}
+ *   발행: /app/chat/{roomNo}
+ */
+
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { ArrowLeft, Send, Wifi, WifiOff, X, ImageOff } from 'lucide-react';
@@ -9,17 +36,19 @@ import { useAuth } from '@/auth/AuthContext';
 
 const WS_URL = `${window.location.origin}/ws`;
 
-// 시스템 메시지 상수
-const REJECT_MSG = '❌ 최종 가격을 거절했습니다.';
-const CANCEL_MSG = '🚫 판매자가 거래를 취소했습니다.';
+// 시스템 메시지 상수 — DB에 그대로 저장되므로 변경 시 기존 대화에 영향을 미친다.
+const REJECT_MSG  = '❌ 최종 가격을 거절했습니다.';
+const CANCEL_MSG  = '🚫 판매자가 거래를 취소했습니다.';
 const APPROVE_MSG = '판매자가 요청을 수락했어요.';
 
+/** 판매자가 채팅으로 전송하는 최종 가격 제안 페이로드 */
 interface FinalPricePayload {
   type: 'FINAL_PRICE';
   title: string;
   price: number;
 }
 
+/** 판매자가 구매 요청을 거절할 때 전송하는 페이로드 */
 interface RejectNoticePayload {
   type: 'REJECT_NOTICE';
   itemTitle: string;
@@ -28,6 +57,7 @@ interface RejectNoticePayload {
   pic1Url: string | null;
 }
 
+/** content가 FINAL_PRICE JSON이면 파싱, 아니면 null 반환 */
 function parseFinalPrice(content: string): FinalPricePayload | null {
   try {
     if (!content.startsWith('{')) return null;
@@ -37,6 +67,7 @@ function parseFinalPrice(content: string): FinalPricePayload | null {
   return null;
 }
 
+/** content가 REJECT_NOTICE JSON이면 파싱, 아니면 null 반환 */
 function parseRejectNotice(content: string): RejectNoticePayload | null {
   try {
     if (!content.startsWith('{')) return null;
@@ -46,7 +77,8 @@ function parseRejectNotice(content: string): RejectNoticePayload | null {
   return null;
 }
 
-function formatTime(iso: string) {
+/** 메시지 발송 시각을 "HH:MM" 형식으로 포맷 */
+function formatTime(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';
   return d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
@@ -82,17 +114,20 @@ export function ChatRoomPage() {
 
   // 거절된 가격 제안 카드의 seqNo 집합
   const [rejectedSeqNos, setRejectedSeqNos] = useState<Set<number>>(new Set());
+  // 수락된 가격 제안 카드의 seqNo 집합 (거절과 분리)
+  const [acceptedSeqNos, setAcceptedSeqNos] = useState<Set<number>>(new Set());
 
   // 판매자 재협상 프롬프트 표시 여부
   const [showRenegotiatePrompt, setShowRenegotiatePrompt] = useState(false);
 
+  // location.state에 purchaseMessage가 있으면 WebSocket 연결 후 한 번만 자동 전송
   const [pendingMessage] = useState<string | null>(
     (location.state as { purchaseMessage?: string } | null)?.purchaseMessage ?? null,
   );
-  const pendingSentRef = useRef(false);
-  const stompRef = useRef<Client | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const myRoleRef = useRef<'B' | 'S' | null>(null);
+  const pendingSentRef  = useRef(false);          // 자동 전송 중복 방지
+  const stompRef        = useRef<Client | null>(null);
+  const messagesEndRef  = useRef<HTMLDivElement>(null);
+  const myRoleRef       = useRef<'B' | 'S' | null>(null); // WebSocket 콜백에서 클로저 이슈 없이 role 접근
 
   // 방 정보 + 메시지 로드
   useEffect(() => {
@@ -128,23 +163,24 @@ export function ChatRoomPage() {
         }
 
         // 이미 처리된 가격 제안 카드 복원 (수락·거절·취소 메시지가 뒤따르는 카드)
-        const actedSeqNos = new Set<number>();
+        const restoredRejected = new Set<number>();
+        const restoredAccepted = new Set<number>();
         let pendingFpSeqNo: number | null = null;
         for (const m of msgs) {
           if (parseFinalPrice(m.content)) {
             pendingFpSeqNo = m.seqNo;
           } else if (pendingFpSeqNo !== null) {
-            if (
-              m.content === REJECT_MSG ||
-              m.content === CANCEL_MSG ||
-              m.content.startsWith('✅')
-            ) {
-              actedSeqNos.add(pendingFpSeqNo);
+            if (m.content === REJECT_MSG || m.content === CANCEL_MSG) {
+              restoredRejected.add(pendingFpSeqNo);
+              pendingFpSeqNo = null;
+            } else if (m.content.startsWith('✅')) {
+              restoredAccepted.add(pendingFpSeqNo);
               pendingFpSeqNo = null;
             }
           }
         }
-        if (actedSeqNos.size > 0) setRejectedSeqNos(actedSeqNos);
+        if (restoredRejected.size > 0) setRejectedSeqNos(restoredRejected);
+        if (restoredAccepted.size > 0) setAcceptedSeqNos(restoredAccepted);
       })
       .catch((e) => setError(e.message ?? '채팅방을 불러오지 못했습니다.'))
       .finally(() => setLoading(false));
@@ -193,6 +229,10 @@ export function ChatRoomPage() {
           if (msg.content === CANCEL_MSG) {
             setTradeCancelled(true);
           }
+          // 구매자 수락 메시지 수신 시 판매자 UI도 잠금
+          if (msg.content.startsWith('✅')) {
+            setTradeCompleted(true);
+          }
           if (msg.sender !== myRoleRef.current && myRoleRef.current) {
             chatApi.markAsRead(rn, myRoleRef.current).catch(() => {});
           }
@@ -227,6 +267,11 @@ export function ChatRoomPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  /**
+   * WebSocket으로 메시지를 발행하는 공통 래퍼.
+   * STOMP 연결이 없거나 역할이 결정되지 않은 경우 무시한다.
+   * @param content - 전송할 메시지 본문 (일반 텍스트 또는 JSON 문자열)
+   */
   const publish = (content: string) => {
     if (!stompRef.current?.connected || !myRoleRef.current) return;
     stompRef.current.publish({
@@ -235,6 +280,10 @@ export function ChatRoomPage() {
     });
   };
 
+  /**
+   * 입력창의 텍스트를 전송한다.
+   * 공백만 있는 경우 전송하지 않는다.
+   */
   const sendMessage = () => {
     const text = input.trim();
     if (!text) return;
@@ -242,7 +291,11 @@ export function ChatRoomPage() {
     setInput('');
   };
 
-  // 판매자: 최종 가격 제안 메시지 전송
+  /**
+   * 판매자가 최종 가격 제안 메시지를 전송한다.
+   * FINAL_PRICE JSON 페이로드를 직렬화하여 WebSocket으로 발행한다.
+   * 재협상 프롬프트가 표시 중이었다면 함께 닫는다.
+   */
   const sendFinalPrice = () => {
     const price = Number(finalPriceInput);
     if (!price || price <= 0) return;
@@ -257,28 +310,45 @@ export function ChatRoomPage() {
     setShowRenegotiatePrompt(false);
   };
 
-  // 구매자: 수락
-  const handleAccept = async (price: number) => {
+  /**
+   * 구매자가 최종 가격 제안을 수락한다.
+   * purchaseApi.complete 호출로 거래 완료 처리 후 채팅에 확인 메시지를 전송한다.
+   * 수락된 카드의 seqNo를 acceptedSeqNos에 추가하여 카드 상태를 '거래 완료'로 변경한다.
+   * @param price - 수락한 최종 가격
+   * @param seqNo - 수락된 FINAL_PRICE 메시지의 seqNo (카드 상태 관리용)
+   */
+  const handleAccept = async (price: number, seqNo: number) => {
     if (!room || accepting || tradeCompleted || tradeCancelled) return;
     setAccepting(true);
     try {
+      // room.receiveCno = 구매자(나), room.cno = 판매자
       await purchaseApi.complete(room.receiveCno, room.cno, room.itemNo, price);
       publish('✅ 최종 가격을 수락했습니다. 거래가 완료되었습니다.');
       setTradeCompleted(true);
+      setAcceptedSeqNos((prev) => new Set([...prev, seqNo]));
     } catch {
       alert('수락 처리 중 오류가 발생했습니다.');
       setAccepting(false);
     }
   };
 
-  // 구매자: 거절
+  /**
+   * 구매자가 최종 가격 제안을 거절한다.
+   * REJECT_MSG를 채팅에 전송하고, 해당 카드의 seqNo를 rejectedSeqNos에 추가한다.
+   * 판매자 측에서 REJECT_MSG를 수신하면 재협상 프롬프트가 표시된다.
+   * @param seqNo - 거절할 FINAL_PRICE 메시지의 seqNo
+   */
   const handleReject = (seqNo: number) => {
     if (tradeCompleted || tradeCancelled || rejectedSeqNos.has(seqNo)) return;
     setRejectedSeqNos((prev) => new Set([...prev, seqNo]));
     publish(REJECT_MSG);
   };
 
-  // 판매자: 거래 취소 (재협상 거부)
+  /**
+   * 판매자가 재협상을 거부하고 거래를 취소한다.
+   * CANCEL_MSG를 채팅에 전송하여 양쪽 모두 채팅 잠금 상태로 전환한다.
+   * WebSocket 콜백에서 CANCEL_MSG를 수신하면 tradeCancelled가 true로 설정된다.
+   */
   const handleCancelTrade = () => {
     setShowRenegotiatePrompt(false);
     publish(CANCEL_MSG);
@@ -347,13 +417,34 @@ export function ChatRoomPage() {
             const rn = parseRejectNotice(msg.content);
             const fp = parseFinalPrice(msg.content);
 
-            // 수락 시스템 메시지
+            // 수락 알림 카드
             if (msg.content === APPROVE_MSG) {
               return (
                 <div key={msg.seqNo} className="flex justify-center my-3">
-                  <div className="flex items-center gap-2 rounded-full bg-emerald-50 border border-emerald-200 px-4 py-1.5">
-                    <span className="text-xs font-semibold text-emerald-600">✅ {APPROVE_MSG}</span>
-                    <span className="text-xs text-stone-400">{formatTime(msg.sentDatetime)}</span>
+                  <div className="w-72 overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-sm">
+                    <div className="flex items-center gap-2 bg-emerald-500 px-4 py-2">
+                      <span className="text-xs font-bold text-white">✅ 구매 요청 수락</span>
+                    </div>
+                    <div className="flex items-center gap-3 px-4 py-3">
+                      {item?.pic1Url ? (
+                        <img
+                          src={item.pic1Url}
+                          alt={item.title}
+                          className="h-12 w-12 flex-shrink-0 rounded-lg object-cover"
+                        />
+                      ) : (
+                        <div className="grid h-12 w-12 flex-shrink-0 place-items-center rounded-lg bg-stone-100">
+                          <ImageOff className="h-5 w-5 text-stone-300" />
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-stone-700">
+                          {item?.title ?? `상품 #${room?.itemNo}`}
+                        </p>
+                        <p className="mt-0.5 text-xs text-stone-500">판매자가 요청을 수락했습니다.</p>
+                      </div>
+                    </div>
+                    <p className="px-4 pb-2 text-right text-xs text-stone-400">{formatTime(msg.sentDatetime)}</p>
                   </div>
                 </div>
               );
@@ -393,14 +484,16 @@ export function ChatRoomPage() {
             // 최종 가격 제안 카드
             if (fp) {
               const isRejected = rejectedSeqNos.has(msg.seqNo);
+              const isAccepted = acceptedSeqNos.has(msg.seqNo);
+              const isDone = isAccepted || (tradeCompleted && !isRejected);
               return (
                 <div key={msg.seqNo} className="flex justify-center my-3">
                   <div className="w-72 rounded-2xl border border-brand-200 bg-white shadow-sm overflow-hidden">
                     <div className={`px-4 py-2 flex items-center justify-between ${
-                      isRejected || tradeCancelled ? 'bg-stone-400' : tradeCompleted ? 'bg-emerald-500' : 'bg-brand-500'
+                      isRejected || tradeCancelled ? 'bg-stone-400' : isDone ? 'bg-emerald-500' : 'bg-brand-500'
                     }`}>
                       <p className="text-xs font-bold text-white">
-                        {isRejected || tradeCancelled ? '❌ 거절된 제안' : tradeCompleted ? '✅ 수락된 제안' : '💰 최종 가격 제안'}
+                        {isRejected || tradeCancelled ? '❌ 거절된 제안' : isDone ? '✅ 수락된 제안' : '💰 최종 가격 제안'}
                       </p>
                     </div>
                     <div className="px-4 py-3">
@@ -415,14 +508,14 @@ export function ChatRoomPage() {
                             <div className="flex items-center justify-center rounded-lg bg-stone-100 py-2 text-sm font-semibold text-stone-400">
                               거절됨
                             </div>
-                          ) : tradeCompleted ? (
+                          ) : isDone ? (
                             <div className="flex items-center justify-center rounded-lg bg-emerald-50 py-2 text-sm font-semibold text-emerald-600">
                               거래 완료
                             </div>
                           ) : (
                             <div className="flex gap-2">
                               <button
-                                onClick={() => handleAccept(fp.price)}
+                                onClick={() => handleAccept(fp.price, msg.seqNo)}
                                 disabled={accepting}
                                 className="flex-1 rounded-lg bg-brand-500 py-2 text-sm font-semibold text-white hover:bg-brand-600 disabled:opacity-50"
                               >

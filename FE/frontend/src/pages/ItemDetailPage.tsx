@@ -1,12 +1,31 @@
+/**
+ * 상품 상세 페이지
+ *
+ * URL: /items/:cno/:itemNo
+ * 비로그인 사용자도 조회 가능.
+ *
+ * 기능:
+ *  - 이미지 갤러리 (최대 3장, 썸네일 클릭으로 대표 이미지 교체)
+ *  - 상품 정보(카테고리, 상태, 제목, 가격, 거래 장소, 판매자 닉네임, 등록일)
+ *  - 구매 요청 모달 (희망 가격 + 메시지 입력)
+ *    - 이미 요청한 경우(409) 예외 처리 후 조용히 성공 처리
+ *    - 판매 중이 아닌 상품은 요청 버튼 비활성화
+ *  - 내 상품인 경우 '수정' 링크 표시
+ */
+
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, MapPin, Clock, Tag, MessageCircle, Heart, ImageOff, Pencil, X } from 'lucide-react';
+import {
+  ArrowLeft, MapPin, Clock, Tag,
+  MessageCircle, Heart, ImageOff, Pencil, X,
+} from 'lucide-react';
 import { itemApi, purchaseApi, customerApi, ApiError } from '@/api/client';
 import type { Item, Customer } from '@/api/types';
 import { Button, Price, StatusBadge, EmptyState } from '@/components/ui';
 import { useAuth } from '@/auth/AuthContext';
 
-function formatDate(iso: string | null) {
+/** ISO 날짜 문자열을 한국어 형식으로 포맷 */
+function formatDate(iso: string | null): string {
   if (!iso) return '-';
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
@@ -15,23 +34,25 @@ function formatDate(iso: string | null) {
 
 export function ItemDetailPage() {
   const { cno, itemNo } = useParams();
-  const { user } = useAuth();
-  const navigate = useNavigate();
-  const [item, setItem] = useState<Item | null>(null);
-  const [seller, setSeller] = useState<Customer | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { user }        = useAuth();
+  const navigate        = useNavigate();
 
-  // 거래 요청 모달 상태
-  const [showModal, setShowModal] = useState(false);
-  const [reqPrice, setReqPrice] = useState('');
+  const [item, setItem]       = useState<Item | null>(null);
+  const [seller, setSeller]   = useState<Customer | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState<string | null>(null);
+
+  // 구매 요청 모달 상태
+  const [showModal, setShowModal]   = useState(false);
+  const [reqPrice, setReqPrice]     = useState('');
   const [reqMessage, setReqMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const priceInputRef = useRef<HTMLInputElement>(null);
 
-  // 이미지 갤러리
+  // 이미지 갤러리 — 현재 대표 이미지
   const [mainPic, setMainPic] = useState<string | null>(null);
 
+  // 상품 로드 — itemApi.get이 없으면 전체 목록에서 탐색(fallback)
   useEffect(() => {
     if (!cno || !itemNo) return;
     const id = Number(itemNo);
@@ -51,18 +72,21 @@ export function ItemDetailPage() {
       .finally(() => setLoading(false));
   }, [cno, itemNo]);
 
-  // item 로드 완료 후 대표 이미지 설정
+  // item 로드 완료 후 첫 번째 이미지를 대표 이미지로 설정
   useEffect(() => {
     if (item) setMainPic(item.pic1Url ?? null);
   }, [item]);
 
-  // 모달 열릴 때 가격 입력 포커스
+  // 모달이 열리면 가격 입력 필드에 포커스
   useEffect(() => {
-    if (showModal) {
-      setTimeout(() => priceInputRef.current?.focus(), 50);
-    }
+    if (showModal) setTimeout(() => priceInputRef.current?.focus(), 50);
   }, [showModal]);
 
+  /**
+   * 구매 요청 모달을 연다.
+   * 비로그인 사용자는 로그인 페이지로 리다이렉트한다.
+   * 이전 입력값을 초기화하고 모달을 표시한다.
+   */
   function openModal() {
     if (!user) { navigate('/login'); return; }
     setReqPrice('');
@@ -70,13 +94,17 @@ export function ItemDetailPage() {
     setShowModal(true);
   }
 
+  /**
+   * 구매 요청을 전송한다.
+   * - 가격이 0 이하면 가격 입력란에 포커스하고 중단한다.
+   * - 이미 요청한 경우(409 Conflict)는 성공으로 처리하여 채팅 목록으로 이동한다.
+   * - 성공 시 /chat 으로 이동 — '승인 대기 중' 섹션에서 요청을 확인할 수 있다.
+   */
   async function handleSubmit() {
     if (!user || !item) return;
     const price = Number(reqPrice);
-    if (!price || price <= 0) {
-      priceInputRef.current?.focus();
-      return;
-    }
+    if (!price || price <= 0) { priceInputRef.current?.focus(); return; }
+
     setSubmitting(true);
     try {
       await purchaseApi
@@ -88,21 +116,21 @@ export function ItemDetailPage() {
           reqMessage: reqMessage.trim(),
         })
         .catch((e: unknown) => {
-          if (e instanceof ApiError && e.status === 409) return null; // 이미 요청함
+          // 이미 요청을 보낸 경우(409 Conflict) — 성공으로 처리
+          if (e instanceof ApiError && e.status === 409) return null;
           throw e;
         });
 
       setShowModal(false);
-      // 채팅 목록으로 이동하면 "승인 대기 중" 섹션에서 요청을 확인할 수 있음
-      navigate('/chat');
+      navigate('/chat'); // 채팅 목록 → '승인 대기 중' 섹션에서 요청 확인 가능
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : '요청에 실패했습니다.';
-      alert(msg);
+      alert(e instanceof Error ? e.message : '요청에 실패했습니다.');
     } finally {
       setSubmitting(false);
     }
   }
 
+  /** Escape 키로 모달을 닫는다. onKeyDown 핸들러로 모달 div에 부착된다. */
   function handleModalKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Escape') setShowModal(false);
   }
@@ -113,18 +141,16 @@ export function ItemDetailPage() {
       <EmptyState
         title="상품을 찾을 수 없습니다"
         description={error ?? undefined}
-        action={
-          <Link to="/">
-            <Button variant="outline">홈으로</Button>
-          </Link>
-        }
+        action={<Link to="/"><Button variant="outline">홈으로</Button></Link>}
       />
     );
 
-  const isOwner = user?.cno === item.cno;
-  const sold = item.sellStatus !== '판매 중';
+  const isOwner  = user?.cno === item.cno;
+  const sold     = item.sellStatus !== '판매 중';
   const soldLabel =
-    item.sellStatus === '예약 중' ? '예약 중인 상품입니다' : '거래가 끝난 상품입니다';
+    item.sellStatus === '예약 중' ? '예약 중인 상품입니다' :
+    item.sellStatus === '검토 중' ? '해당 상품은 검토 중입니다' :
+    '거래가 끝난 상품입니다';
   const allPics = [item.pic1Url, item.pic2Url, item.pic3Url].filter(Boolean) as string[];
 
   return (
@@ -137,7 +163,7 @@ export function ItemDetailPage() {
       </button>
 
       <div className="grid gap-8 md:grid-cols-2">
-        {/* 이미지 영역 */}
+        {/* 이미지 갤러리 */}
         <div className="flex flex-col gap-3">
           <div className="relative flex aspect-square items-center justify-center overflow-hidden rounded-2xl bg-stone-100">
             {mainPic ? (
@@ -153,6 +179,7 @@ export function ItemDetailPage() {
               </div>
             )}
           </div>
+          {/* 썸네일 — 이미지가 2장 이상일 때만 표시 */}
           {allPics.length > 1 && (
             <div className="flex gap-2">
               {allPics.map((url, i) => (
@@ -205,33 +232,29 @@ export function ItemDetailPage() {
 
           <div className="mt-8 flex flex-col gap-2">
             {isOwner ? (
+              // 내 상품: 수정 링크
               <Link to="/my-items">
                 <Button variant="outline" className="w-full">
                   <Pencil className="h-4 w-4" />내 상품 관리에서 수정
                 </Button>
               </Link>
             ) : (
-              <>
-                <div className="flex gap-2">
-                  <Button variant="outline" className="px-3">
-                    <Heart className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    className="flex-1"
-                    disabled={sold}
-                    onClick={openModal}
-                  >
-                    <MessageCircle className="h-4 w-4" />
-                    {sold ? soldLabel : '구매 요청하기'}
-                  </Button>
-                </div>
-              </>
+              // 타인 상품: 구매 요청 버튼
+              <div className="flex gap-2">
+                <Button variant="outline" className="px-3">
+                  <Heart className="h-4 w-4" />
+                </Button>
+                <Button className="flex-1" disabled={sold} onClick={openModal}>
+                  <MessageCircle className="h-4 w-4" />
+                  {sold ? soldLabel : '구매 요청하기'}
+                </Button>
+              </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* 거래 요청 모달 */}
+      {/* 구매 요청 모달 */}
       {showModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
@@ -239,7 +262,6 @@ export function ItemDetailPage() {
           onKeyDown={handleModalKeyDown}
         >
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-            {/* 모달 헤더 */}
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-bold text-stone-900">구매 요청하기</h2>
               <button
@@ -258,7 +280,7 @@ export function ItemDetailPage() {
               </p>
             </div>
 
-            {/* 희망 가격 */}
+            {/* 희망 가격 입력 */}
             <label className="mt-4 block">
               <span className="text-sm font-semibold text-stone-700">
                 희망 가격 <span className="text-red-500">*</span>
@@ -274,17 +296,14 @@ export function ItemDetailPage() {
                   placeholder="원하는 가격을 입력하세요"
                   className="w-full rounded-xl border border-stone-300 py-2.5 pl-4 pr-10 text-sm outline-none transition-colors placeholder:text-stone-400 focus:border-brand-400"
                 />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-stone-400">
-                  원
-                </span>
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-stone-400">원</span>
               </div>
             </label>
 
-            {/* 메시지 */}
+            {/* 메시지 입력 (선택) */}
             <label className="mt-3 block">
               <span className="text-sm font-semibold text-stone-700">
-                메시지{' '}
-                <span className="text-xs font-normal text-stone-400">(선택)</span>
+                메시지 <span className="text-xs font-normal text-stone-400">(선택)</span>
               </span>
               <textarea
                 value={reqMessage}
@@ -296,14 +315,9 @@ export function ItemDetailPage() {
               />
             </label>
 
-            {/* 버튼 */}
+            {/* 확인/취소 버튼 */}
             <div className="mt-5 flex gap-2">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => setShowModal(false)}
-                disabled={submitting}
-              >
+              <Button variant="outline" className="flex-1" onClick={() => setShowModal(false)} disabled={submitting}>
                 취소
               </Button>
               <Button
@@ -321,15 +335,8 @@ export function ItemDetailPage() {
   );
 }
 
-function Row({
-  icon,
-  label,
-  children,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  children: React.ReactNode;
-}) {
+/** 상품 정보 행 — 아이콘 + 라벨 + 값 레이아웃 */
+function Row({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2 text-stone-600">
       <span className="text-stone-400">{icon}</span>

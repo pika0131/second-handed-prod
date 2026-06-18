@@ -1,3 +1,17 @@
+/**
+ * 거래 기록 페이지
+ *
+ * URL: /trade-history
+ * 로그인 필요.
+ *
+ * 탭 구조:
+ *  - 판매 내역(SellTab): salesApi.getCompleted → 기간/키워드 필터 + 통계 카드 (건수/총액/평균가)
+ *  - 구매 내역(BuyTab): purchaseApi.getHistory → resDateTime 내림차순 정렬
+ *
+ * SellTab PERIODS: 1개월(months=1), 3개월(3), 6개월(6), 전체(months=0)
+ *  - months=0 이면 cutoff=0 → 모든 항목 통과
+ */
+
 import { useEffect, useMemo, useState } from 'react';
 import {
   Receipt, TrendingUp, Coins, ShoppingBag, ImageOff, ArrowDownCircle,
@@ -81,18 +95,25 @@ function SellTab({ cno }: { cno: string }) {
   }, [cno]);
 
   const filtered = useMemo(() => {
+    // cutoff: period=0(전체)이면 0으로 설정하여 모든 항목 통과
+    // 그 외에는 현재 시각 기준 N개월 전 타임스탬프를 계산
     const cutoff =
       period === 0 ? 0 : Date.now() - PERIODS[period].months * 30 * 24 * 60 * 60 * 1000;
     return sales
       .filter((s) => {
-        if (period === 0) return true;
+        if (period === 0) return true; // '전체' 탭은 기간 필터 없음
         const t = new Date(s.resDateTime ?? '').getTime();
-        return isNaN(t) ? true : t >= cutoff;
+        return isNaN(t) ? true : t >= cutoff; // 날짜 파싱 실패 시 포함
       })
-      .filter((s) => (keyword ? s.title.includes(keyword) : true))
-      .sort((a, b) => (b.resDateTime ?? '').localeCompare(a.resDateTime ?? ''));
+      .filter((s) => (keyword ? s.title.includes(keyword) : true)) // 상품명 키워드 검색
+      .sort((a, b) => (b.resDateTime ?? '').localeCompare(a.resDateTime ?? '')); // 최신 완료순
   }, [sales, period, keyword]);
 
+  /**
+   * 현재 필터 결과를 기준으로 통계를 계산한다.
+   * - total: finalPrice가 있으면 최종 거래가, 없으면 등록가(price)로 합산
+   * - avg: total을 건수로 나눈 평균 (결과 없으면 0)
+   */
   const stats = useMemo(() => {
     const total = filtered.reduce((s, i) => s + (i.finalPrice ?? i.price), 0);
     return {

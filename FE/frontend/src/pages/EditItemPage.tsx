@@ -1,3 +1,19 @@
+/**
+ * 상품 수정 페이지
+ *
+ * URL: /my-items/:itemNo/edit
+ * 로그인 필요. URL 파라미터 :itemNo 로 상품 식별.
+ *
+ * 처리 순서:
+ *  1. itemApi.get(cno, itemNo) 로 상품 로드 (실패 시 list() 전체에서 탐색)
+ *  2. ItemFormFields에 initial / initialPicUrls 전달
+ *  3. onSubmit:
+ *     a. itemApi.update() — 메타데이터 수정
+ *     b. itemApi.uploadPic() — 새 이미지 슬롯 업로드 (순서 보장)
+ *     c. itemApi.deletePic() — 삭제된 슬롯 처리 (새 이미지가 없는 슬롯만)
+ *     d. /my-items 로 이동
+ */
+
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { itemApi } from '@/api/client';

@@ -1,3 +1,16 @@
+/**
+ * 로그인 페이지
+ *
+ * URL: /login
+ *
+ * - location.state.from 에 저장된 경로가 있으면 로그인 후 해당 경로로 이동한다.
+ *   (RequireAuth 가드에서 { state: { from: location } } 로 전달)
+ * - customerApi.login() 성공 → AuthContext.login(user) → navigate(from, { replace: true })
+ *
+ * ⚠ 하단 안내 문구("admin으로 시작하면 관리자 메뉴")는 UI 힌트일 뿐,
+ *   실제 관리자 판단 기준은 cno === 'c0' (AuthContext.checkAdmin 참고).
+ */
+
 import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Store, LogIn } from 'lucide-react';
@@ -15,6 +28,13 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  /**
+   * 로그인 폼을 제출한다.
+   * - cno/passwd 중 하나라도 비어 있으면 에러 메시지 표시 후 중단한다.
+   * - customerApi.login() 성공 시 AuthContext에 사용자를 등록하고
+   *   location.state.from(진입 전 페이지) 또는 '/'으로 이동한다.
+   * - navigate replace: true 로 history 스택에서 로그인 페이지를 제거한다.
+   */
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!cno || !passwd) {
@@ -25,8 +45,8 @@ export function LoginPage() {
     setError(null);
     try {
       const user = await customerApi.login(cno.trim(), passwd);
-      login(user);
-      navigate(from, { replace: true });
+      login(user);                           // AuthContext + sessionStorage 업데이트
+      navigate(from, { replace: true });     // 이전 페이지 또는 홈으로 이동
     } catch (err) {
       setError(err instanceof Error ? err.message : '로그인에 실패했습니다.');
     } finally {

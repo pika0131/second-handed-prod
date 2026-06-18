@@ -1,3 +1,16 @@
+/**
+ * 관리자 레이아웃 (공통 사이드바 + 중첩 라우트 Outlet)
+ *
+ * URL 범위: /admin/*
+ * isAdmin (= cno === 'c0') 이 false이면 즉시 홈('/')으로 리다이렉트.
+ *
+ * 사이드바 메뉴:
+ *  - 대시보드 /admin          (end=true: 정확히 /admin 일 때만 활성)
+ *  - 회원 관리 /admin/users
+ *  - 상품 관리 /admin/items
+ *  - 통계 질의 /admin/stats
+ */
+
 import { NavLink, Outlet, Navigate } from 'react-router-dom';
 import { LayoutDashboard, Users, Package, ShieldAlert, BarChart2 } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';

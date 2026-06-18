@@ -1,3 +1,15 @@
+/**
+ * 회원가입 페이지
+ *
+ * URL: /signup
+ *
+ * 필수 입력: 아이디(cno), 비밀번호(passwd), 닉네임(nickname)
+ * 선택 입력: 전화번호(phone), 동네(region)
+ *
+ * 가입 성공 시 자동으로 로그인 처리(login(created))하고 홈으로 이동한다.
+ * cno 중복 시 백엔드에서 409 Conflict를 반환하며, 에러 메시지를 화면에 표시한다.
+ */
+
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { UserPlus } from 'lucide-react';
@@ -6,18 +18,19 @@ import { useAuth } from '@/auth/AuthContext';
 import { Button } from '@/components/ui';
 
 export function SignupPage() {
-  const { login } = useAuth();
-  const navigate = useNavigate();
+  const { login }   = useAuth();
+  const navigate    = useNavigate();
   const [form, setForm] = useState({
-    cno: '',
-    passwd: '',
+    cno:      '',
+    passwd:   '',
     nickname: '',
-    phone: '',
-    region: '',
+    phone:    '',
+    region:   '',
   });
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy]   = useState(false);
 
+  /** 특정 필드 값을 변경하는 onChange 핸들러 팩토리 */
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
@@ -31,18 +44,17 @@ export function SignupPage() {
     setError(null);
     try {
       const created = await customerApi.signup({
-        cno: form.cno.trim(),
-        passwd: form.passwd,
+        cno:      form.cno.trim(),
+        passwd:   form.passwd,
         nickname: form.nickname.trim(),
-        phone: form.phone || null,
-        region: form.region || null,
+        phone:    form.phone || null,
+        region:   form.region || null,
       });
+      // 가입 직후 자동 로그인 처리
       login(created ?? { ...form, phone: form.phone || null, region: form.region || null });
       navigate('/');
     } catch (err) {
-      setError(
-        (err instanceof Error ? err.message : '회원가입에 실패했습니다.')
-      );
+      setError(err instanceof Error ? err.message : '회원가입에 실패했습니다.');
     } finally {
       setBusy(false);
     }
@@ -54,20 +66,20 @@ export function SignupPage() {
       <p className="mb-6 text-sm text-stone-500">동네장터 이웃이 되어보세요</p>
 
       <form onSubmit={submit} className="space-y-4 rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
-        <Field label="회원번호 (CNO)" required>
-          <input value={form.cno} onChange={set('cno')} placeholder="예: d202312345" className="input" />
+        <Field label="아이디" required>
+          <input value={form.cno}      onChange={set('cno')}      className="input" />
         </Field>
         <Field label="비밀번호" required>
-          <input type="password" value={form.passwd} onChange={set('passwd')} className="input" />
+          <input type="password" value={form.passwd}   onChange={set('passwd')}   className="input" />
         </Field>
         <Field label="닉네임" required>
           <input value={form.nickname} onChange={set('nickname')} placeholder="동네에서 보일 이름" className="input" />
         </Field>
         <Field label="전화번호">
-          <input value={form.phone} onChange={set('phone')} placeholder="010-0000-0000" className="input" />
+          <input value={form.phone}    onChange={set('phone')}    placeholder="010-0000-0000" className="input" />
         </Field>
         <Field label="동네">
-          <input value={form.region} onChange={set('region')} placeholder="예: 인천 연수구" className="input" />
+          <input value={form.region}   onChange={set('region')}   placeholder="예: 인천 연수구" className="input" />
         </Field>
 
         {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
@@ -85,12 +97,15 @@ export function SignupPage() {
         </p>
       </form>
 
-      <style>{`.input{width:100%;border:1px solid #d6d3d1;border-radius:.6rem;padding:.6rem .75rem;font-size:.9rem;outline:none}
-      .input:focus{border-color:var(--color-brand-400);box-shadow:0 0 0 3px var(--color-brand-100)}`}</style>
+      <style>{`
+        .input { width: 100%; border: 1px solid #d6d3d1; border-radius: .6rem; padding: .6rem .75rem; font-size: .9rem; outline: none }
+        .input:focus { border-color: var(--color-brand-400); box-shadow: 0 0 0 3px var(--color-brand-100) }
+      `}</style>
     </div>
   );
 }
 
+/** 폼 레이블 래퍼 — 필수 항목에는 빨간 별표 표시 */
 function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
     <label className="block">

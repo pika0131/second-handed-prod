@@ -1,3 +1,16 @@
+/**
+ * 내 프로필 페이지
+ *
+ * URL: /profile
+ * 로그인 필요.
+ *
+ * 보기 모드(InfoRow 목록)와 수정 모드(Field 입력폼) 두 가지 상태.
+ * 수정 가능 항목: 닉네임, 전화번호, 지역
+ * 읽기 전용: 회원번호(cno) — 변경 불가, disabled 입력 필드로 표시
+ *
+ * 저장 흐름: customerApi.update() → 성공 시 login(updated) 로 AuthContext 갱신
+ */
+
 import { useState } from 'react';
 import { User } from 'lucide-react';
 import { customerApi } from '@/api/client';
@@ -17,6 +30,11 @@ export function ProfilePage() {
 
   if (!user) return null;
 
+  /**
+   * 수정 모드로 전환한다.
+   * 현재 AuthContext에 저장된 값을 로컬 상태(입력 필드)에 복사하여 초기값으로 채운다.
+   * success 메시지와 error도 초기화한다.
+   */
   const startEdit = () => {
     setNickname(user.nickname);
     setPhone(user.phone ?? '');
@@ -26,11 +44,21 @@ export function ProfilePage() {
     setEditing(true);
   };
 
+  /**
+   * 수정을 취소하고 보기 모드로 돌아간다.
+   * 입력 필드는 다음에 startEdit()가 호출될 때 다시 채워진다.
+   */
   const cancel = () => {
     setEditing(false);
     setError(null);
   };
 
+  /**
+   * 프로필 변경 사항을 저장한다.
+   * - 닉네임이 비어 있으면 유효성 검사 에러를 표시하고 중단한다.
+   * - customerApi.update() 성공 시 login(updated)로 AuthContext를 갱신한다.
+   *   (sessionStorage에도 최신 정보가 반영됨)
+   */
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nickname.trim()) {
@@ -42,10 +70,10 @@ export function ProfilePage() {
     try {
       const updated = await customerApi.update(user.cno, {
         nickname: nickname.trim(),
-        phone: phone.trim() || null,
+        phone: phone.trim() || null,  // 빈 문자열은 null로 저장
         region: region.trim() || null,
       });
-      login(updated);
+      login(updated); // AuthContext + sessionStorage 업데이트
       setEditing(false);
       setSuccess(true);
     } catch (err) {

@@ -1,3 +1,18 @@
+/**
+ * 관리자 대시보드
+ *
+ * URL: /admin
+ *
+ * 마운트 시 itemApi.list() + customerApi.list() 를 병렬 로드한다.
+ * 로드된 데이터로 클라이언트 집계:
+ *  - stats: 전체 회원 수, 전체 상품 수, 판매 중 수, 거래 완료 건수, 누적 매출(price 합산)
+ *  - byCategory: CATEGORIES 배열 순으로 카테고리별 상품 수 계산 → 수평 바 차트
+ *
+ * 누적 매출은 finalPrice 대신 price(등록가)를 합산한다.
+ * (DB의 FINALPRICE 칼럼은 거래 완료 시 purchaseApi.complete 로 저장되나,
+ *  Item 타입에 finalPrice 필드가 없어 price로 대체)
+ */
+
 import { useEffect, useMemo, useState } from 'react';
 import { Users, Package, CheckCircle2, Clock } from 'lucide-react';
 import { customerApi, itemApi } from '@/api/client';
@@ -14,17 +29,25 @@ export function DashboardPage() {
     customerApi.list().then(setCustomers).catch(() => {});
   }, []);
 
+  /**
+   * 홈 통계 카드에 표시할 집계값을 계산한다.
+   * revenue는 finalPrice 미포함 — Item 타입에 finalPrice 필드가 없어 등록가(price)로 대체한다.
+   */
   const stats = useMemo(() => {
     const done = items.filter((i) => i.sellStatus === '거래 완료');
     return {
-      members: customers.length,
-      items: items.length,
-      done: done.length,
-      onSale: items.filter((i) => i.sellStatus === '판매 중').length,
-      revenue: done.reduce((s, i) => s + i.price, 0),
+      members:  customers.length,
+      items:    items.length,
+      done:     done.length,
+      onSale:   items.filter((i) => i.sellStatus === '판매 중').length,
+      revenue:  done.reduce((s, i) => s + i.price, 0), // price 합산 (finalPrice 미사용)
     };
   }, [items, customers]);
 
+  /**
+   * 카테고리별 상품 수를 배열로 계산한다.
+   * CATEGORIES 순서를 그대로 유지하여 일관된 바 차트 순서를 보장한다.
+   */
   const byCategory = useMemo(
     () =>
       CATEGORIES.map((c) => ({
@@ -33,6 +56,7 @@ export function DashboardPage() {
       })),
     [items],
   );
+  // 바 차트 너비 계산용 최대값 (0인 경우 division by zero 방지)
   const maxCat = Math.max(1, ...byCategory.map((c) => c.count));
 
   return (

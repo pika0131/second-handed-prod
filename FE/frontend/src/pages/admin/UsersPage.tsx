@@ -1,3 +1,15 @@
+/**
+ * 관리자 — 회원 관리 페이지
+ *
+ * URL: /admin/users
+ *
+ * customerApi.list() 로 전체 회원 목록을 로드한다.
+ * keyword 검색: 닉네임 + 회원번호(cno) + 동네(region) 대상 클라이언트 필터 (대소문자 무시).
+ *
+ * 현재는 조회 전용 (회원 수정/삭제 기능 미구현).
+ * 회원 아바타는 닉네임의 첫 글자로 표시한다.
+ */
+
 import { useEffect, useMemo, useState } from 'react';
 import { Search, Users } from 'lucide-react';
 import { customerApi } from '@/api/client';
@@ -18,6 +30,10 @@ export function UsersPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  /**
+   * keyword를 닉네임, 회원번호(cno), 동네(region)에 대해 소문자 포함 검색으로 필터링한다.
+   * keyword가 비어 있으면 전체 목록을 그대로 반환한다.
+   */
   const filtered = useMemo(
     () =>
       customers.filter((c) =>

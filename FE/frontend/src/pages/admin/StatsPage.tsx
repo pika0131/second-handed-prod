@@ -1,9 +1,30 @@
+/**
+ * 관리자 통계 질의 페이지
+ *
+ * URL: /admin/stats
+ *
+ * ① 카테고리별 판매 통계 (그룹 함수 · ROLLUP)
+ *    - statsApi.getCategoryGroup() → StatController.getCategoryGroup()
+ *    - Oracle: GROUP BY ROLLUP(CATEGORY, SELLSTATUS)
+ *    - 행 분류:
+ *        grpCategory=1 → 전체 합계 (검정 배경 강조)
+ *        grpCategory=0, grpStatus=1 → 카테고리 소계 (회색 배경)
+ *        그 외 → 카테고리+상태 상세 행
+ *
+ * ② 판매자별 거래 완료 매출 랭킹 (윈도우 함수 · RANK / SUM OVER)
+ *    - statsApi.getSellerRank() → StatController.getSellerRank()
+ *    - Oracle: RANK() OVER (ORDER BY SUM(FINALPRICE) DESC)
+ *            + SUM(SUM(FINALPRICE)) OVER () — 전체 대비 비중 계산
+ *    - 1~3위는 메달 이모지로 표시
+ */
+
 import { useEffect, useState } from 'react';
 import { BarChart2, Trophy, RotateCw } from 'lucide-react';
 import { statsApi } from '@/api/client';
 import type { CategoryGroupStat, SellerRankStat } from '@/api/types';
 import { Button } from '@/components/ui';
 
+/** 숫자를 천 단위 쉼표로 포맷, null/undefined는 '-' 반환 */
 function fmt(value: number | null | undefined) {
   if (value == null) return '-';
   return Number(value).toLocaleString();
@@ -17,6 +38,10 @@ export function StatsPage() {
   const [catError, setCatError] = useState<string | null>(null);
   const [rankError, setRankError] = useState<string | null>(null);
 
+  /**
+   * 카테고리 × 판매상태 ROLLUP 통계를 서버에서 다시 조회한다.
+   * 로딩/에러 상태를 관리하며, 새로고침 버튼에도 바인딩된다.
+   */
   const loadCat = () => {
     setCatLoading(true);
     setCatError(null);
@@ -27,6 +52,10 @@ export function StatsPage() {
       .finally(() => setCatLoading(false));
   };
 
+  /**
+   * 판매자별 매출 랭킹(윈도우 함수)을 서버에서 다시 조회한다.
+   * 거래 완료 건이 없으면 빈 배열이 반환된다.
+   */
   const loadRank = () => {
     setRankLoading(true);
     setRankError(null);

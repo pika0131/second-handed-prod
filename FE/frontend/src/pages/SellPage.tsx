@@ -1,3 +1,15 @@
+/**
+ * 상품 등록 페이지
+ *
+ * URL: /sell
+ * 로그인 필요.
+ *
+ * 처리 순서:
+ *  1. itemApi.create() — 상품 메타데이터 저장 (itemNo 자동 채번)
+ *  2. itemApi.uploadPic() — 이미지 슬롯별 순차 업로드 (1 → 2 → 3)
+ *  3. /my-items 로 이동
+ */
+
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { itemApi } from '@/api/client';

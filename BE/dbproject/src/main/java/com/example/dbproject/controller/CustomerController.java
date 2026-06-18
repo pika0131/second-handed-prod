@@ -12,8 +12,17 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * 기존 CustomerController.java에 회원가입(POST /api/customers) 1개를 추가했습니다.
- * 기존 파일을 이 내용으로 교체하면 됩니다.
+ * 회원(Customer) REST API 컨트롤러
+ *
+ * Base URL: /api/customers
+ * CORS: http://localhost:5173 (Vite 개발 서버)
+ *
+ * 제공 기능:
+ *   GET    /             : 전체 회원 목록 (관리자 화면용)
+ *   POST   /login        : 로그인
+ *   GET    /{cno}        : 단일 회원 조회
+ *   PUT    /{cno}        : 프로필 수정 (닉네임, 전화번호, 지역)
+ *   POST   /             : 회원가입
  */
 @RestController
 @RequestMapping("/api/customers")
@@ -23,39 +32,46 @@ public class CustomerController {
     @Autowired
     private CustomerRepository customerRepository;
 
-    // 1. 전체 고객 목록 조회 (기존) — 관리자 회원 관리 화면에서 사용
+    // ── 1. 전체 회원 목록 조회 ────────────────────────────────────
+    // 관리자 회원 관리 화면(UsersPage)에서 전체 목록을 표시할 때 사용
     @GetMapping
     public List<Customer> getAllCustomers() {
         return customerRepository.findAll();
     }
 
-    // 2. 로그인 (기존)
+    // ── 2. 로그인 ─────────────────────────────────────────────────
+    // body: { cno, passwd }
+    // 성공 시 Customer 객체 반환, 실패 시 401 + 에러 메시지
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody Map<String, String> loginData) {
-        String cno = loginData.get("cno");
+        String cno    = loginData.get("cno");
         String passwd = loginData.get("passwd");
 
         Optional<Customer> customerOpt = customerRepository.findById(cno);
-        if (customerOpt.isPresent()) {
-            Customer customer = customerOpt.get();
-            if (customer.getPasswd().equals(passwd)) {
-                return ResponseEntity.ok(customer);
-            }
+        if (customerOpt.isPresent() && customerOpt.get().getPasswd().equals(passwd)) {
+            return ResponseEntity.ok(customerOpt.get());
         }
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("아이디 또는 비밀번호가 틀렸습니다.");
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body("아이디 또는 비밀번호가 틀렸습니다.");
     }
 
-    // 3. 단일 고객 조회
+    // ── 3. 단일 회원 조회 ─────────────────────────────────────────
+    // 채팅 상대방 닉네임 조회 등에서 사용
     @GetMapping("/{cno}")
     public ResponseEntity<?> getCustomer(@PathVariable String cno) {
         return customerRepository.findById(cno)
                 .<ResponseEntity<?>>map(ResponseEntity::ok)
-                .orElse(ResponseEntity.status(HttpStatus.NOT_FOUND).body("존재하지 않는 회원입니다."));
+                .orElse(ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body("존재하지 않는 회원입니다."));
     }
 
-    // 4. 프로필 수정 (닉네임, 전화번호, 지역)
+    // ── 4. 프로필 수정 ────────────────────────────────────────────
+    // body: { nickname, phone, region }
+    // cno(회원번호)는 변경 불가, 닉네임은 null이 아닌 경우에만 수정
     @PutMapping("/{cno}")
-    public ResponseEntity<?> updateCustomer(@PathVariable String cno, @RequestBody Map<String, String> data) {
+    public ResponseEntity<?> updateCustomer(
+            @PathVariable String cno,
+            @RequestBody Map<String, String> data) {
         return customerRepository.findById(cno).<ResponseEntity<?>>map(customer -> {
             if (data.containsKey("nickname") && data.get("nickname") != null) {
                 customer.setNickname(data.get("nickname"));
@@ -63,14 +79,18 @@ public class CustomerController {
             customer.setPhone(data.get("phone"));
             customer.setRegion(data.get("region"));
             return ResponseEntity.ok(customerRepository.save(customer));
-        }).orElse(ResponseEntity.status(HttpStatus.NOT_FOUND).body("존재하지 않는 회원입니다."));
+        }).orElse(ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body("존재하지 않는 회원입니다."));
     }
 
-    // 5. 회원가입
+    // ── 5. 회원가입 ───────────────────────────────────────────────
+    // body: Customer 객체 전체 (cno, passwd, nickname, phone, region)
+    // cno 중복 시 409 Conflict 반환
     @PostMapping
     public ResponseEntity<?> signup(@RequestBody Customer customer) {
         if (customerRepository.existsById(customer.getCno())) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body("이미 존재하는 회원번호입니다.");
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body("이미 존재하는 회원번호입니다.");
         }
         Customer saved = customerRepository.save(customer);
         return ResponseEntity.status(HttpStatus.CREATED).body(saved);
