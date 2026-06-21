@@ -34,4 +34,4 @@ jobs:
           New-Item -ItemType Directory -Force -Path $dest | Out-Null
           Copy-Item -Recurse -Force "dist\*" $dest
           Write-Host "배포 완료: $dest"
-        shell: pwsh
+        shell: powershell
