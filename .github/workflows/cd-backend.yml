@@ -21,6 +21,8 @@ jobs:
 
       - name: Build JAR (skip tests)
         run: ./gradlew build -x test
+        env:
+          JAVA_HOME: C:\Program Files\Java\jdk-21.0.11
 
       - name: Stop existing server
         run: |
