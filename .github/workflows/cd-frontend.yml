@@ -1,0 +1,37 @@
+name: Frontend CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'FE/**'
+      - '.github/workflows/cd-frontend.yml'
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    defaults:
+      run:
+        working-directory: FE/frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Deploy dist to serve folder
+        run: |
+          $dest = "C:\deploy\frontend"
+          if (Test-Path $dest) {
+            Remove-Item -Recurse -Force $dest
+          }
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Copy-Item -Recurse -Force "dist\*" $dest
+          Write-Host "배포 완료: $dest"
+        shell: pwsh

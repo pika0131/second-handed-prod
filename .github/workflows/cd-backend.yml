@@ -1,0 +1,44 @@
+name: Backend CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'BE/**'
+      - '.github/workflows/cd-backend.yml'
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    defaults:
+      run:
+        working-directory: BE/dbproject
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build JAR (skip tests)
+        run: ./gradlew build -x test
+
+      - name: Stop existing server
+        run: |
+          $proc = Get-Process -Name "java" -ErrorAction SilentlyContinue
+          if ($proc) {
+            Stop-Process -Name "java" -Force
+            Start-Sleep -Seconds 2
+            Write-Host "기존 서버 종료 완료"
+          } else {
+            Write-Host "실행 중인 서버 없음"
+          }
+        shell: pwsh
+
+      - name: Start server
+        run: |
+          $jar = Get-ChildItem -Path "build/libs" -Filter "*.jar" | Where-Object { $_.Name -notlike "*plain*" } | Select-Object -First 1
+          Write-Host "실행할 JAR: $($jar.FullName)"
+          Start-Process -FilePath "java" -ArgumentList "-jar", $jar.FullName -WindowStyle Hidden
+          Start-Sleep -Seconds 5
+          Write-Host "서버 시작 완료"
+        shell: pwsh
