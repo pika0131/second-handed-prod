@@ -174,3 +174,6 @@ export interface ReceivedPurchaseReq {
   reqMessage: string | null;
   reqDateTime: string;
 }
+
+// CI 테스트용 의도적 타입 오류
+const testValue: number = "이것은 CI가 잡아야 할 오류입니다";
