@@ -230,8 +230,8 @@ export function HomePage() {
       {/* 페이지 헤더 */}
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4 border-b border-stone-200 pb-5">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-stone-900">동네 상품</h1>
-          <p className="mt-1.5 text-stone-500">우리 동네에서 거래되는 따끈따끈한 중고 물품</p>
+          <h1 className="text-3xl font-extrabold tracking-tight text-stone-900">동네 중고 상품</h1>
+          <p className="mt-1.5 text-stone-500">우리 동네에서 거래되는 따끈따끈한 중고 물품 🛒</p>
         </div>
         <Link to={user ? '/sell' : '/login'}>
           <Button>
