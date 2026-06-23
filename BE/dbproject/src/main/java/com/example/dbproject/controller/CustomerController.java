@@ -52,7 +52,7 @@ public class CustomerController {
             return ResponseEntity.ok(customerOpt.get());
         }
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body("아이디 또는 비밀번호가 틀렸습니다.");
+                .body("아이디 또는 비밀번호를 확인해 주세요.");
     }
 
     // ── 3. 단일 회원 조회 ─────────────────────────────────────────
